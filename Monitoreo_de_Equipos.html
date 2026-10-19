@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Pucón - Gestión de Protecciones</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS (xlsx) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- MapLibre GL CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+    <!-- MapLibre GL JS -->
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+</head>
+<body class="bg-slate-100 dark:bg-[#0f172a] text-slate-800 dark:text-slate-100 font-sans min-h-screen flex flex-col transition-colors duration-200">
+
+    <!-- Header / Barra Superior -->
+    <header class="bg-white dark:bg-[#1e293b] border-b border-slate-200 dark:border-slate-700/80 px-6 py-4 flex flex-col lg:flex-row justify-between items-center gap-4 sticky top-0 z-50 shadow-md dark:shadow-xl">
+        <div class="flex items-center gap-3 w-full lg:w-auto justify-between lg:justify-start">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-600/20 dark:bg-blue-600/30 border border-blue-500/40 p-2.5 rounded-xl text-blue-600 dark:text-blue-400">
+                    <i class="fa-solid fa-tower-broadcast text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg md:text-xl font-bold tracking-wide text-slate-900 dark:text-white">Monitoreo de Equipos - Pucón</h1>
+                    <p class="text-xs font-semibold text-blue-600 dark:text-blue-400">By Juan Kunz</p><p class="text-xs text-slate-500 dark:text-slate-400">Total Equipos Comuna: <span id="totalPuconCount" class="font-semibold text-blue-600 dark:text-blue-400">0</span></p>
+                </div>
+            </div>
+            <!-- Botón Modo Oscuro / Claro en móvil -->
+            <button onclick="toggleTheme()" class="lg:hidden p-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm">
+                <i id="themeIconMobile" class="fa-solid fa-sun dark:fa-moon"></i>
+            </button>
+        </div>
+
+        <!-- Buscador Global -->
+        <div class="w-full lg:w-80 relative">
+            <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+                <i class="fa-solid fa-search text-xs"></i>
+            </span>
+            <input type="text" id="globalSearch" oninput="filterData()" placeholder="Buscar por ID, Nombre..." class="w-full pl-9 pr-4 py-1.5 text-xs bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+
+        <!-- Acciones: Tema, Cargar y Exportar -->
+        <div class="flex items-center gap-2.5 flex-wrap justify-end w-full lg:w-auto">
+            <button onclick="openEditor()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3.5 py-2 rounded-lg text-xs font-semibold"><i class="fa-solid fa-pen-to-square"></i> Nuevo equipo</button>
+            <button onclick="downloadSelectedExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2 shadow border border-emerald-500/40">
+                <i class="fa-solid fa-file-excel text-sm"></i> Exportar (<span id="exportBadgeCount">0</span>)
+            </button>
+
+            <div class="flex items-center gap-2 bg-slate-50 dark:bg-[#0f172a] p-1.5 rounded-lg border border-slate-300 dark:border-slate-700">
+                <label for="excelFile" class="cursor-pointer bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-xs font-semibold transition flex items-center gap-1.5 shadow">
+                    <i class="fa-solid fa-upload"></i> Cargar Excel
+                </label>
+                <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" class="hidden">
+                <span id="fileName" class="text-xs text-slate-500 dark:text-slate-400 max-w-[120px] truncate">Sin archivo</span>
+            </div>
+
+            <!-- Botón Modo Oscuro / Claro Desktop -->
+            <button onclick="toggleTheme()" class="hidden lg:flex items-center justify-center p-2.5 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700 transition">
+                <i id="themeIconDesktop" class="fa-solid fa-sun dark:fa-moon"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Contenido Principal -->
+    <main class="flex-1 p-3 sm:p-6 max-w-[1600px] mx-auto w-full space-y-6">
+
+        <!-- Sección de Resultados de Búsqueda -->
+        <section id="searchResultsSection" class="hidden bg-white dark:bg-[#1e293b] p-5 rounded-xl border border-blue-500/40 shadow-lg space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-3">
+                <h3 class="text-sm font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
+                    <i class="fa-solid fa-file-lines"></i> Detalle de Búsqueda de Equipos
+                </h3>
+                <span id="searchResultCount" class="text-xs bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 px-2.5 py-0.5 rounded-full">0 encontrados</span>
+            </div>
+            <div id="searchCardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Se inyecta dinámicamente -->
+            </div>
+        </section>
+
+        <!-- 1. Tarjetas Superiores de KPIs -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div class="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-slate-200 dark:border-slate-700/70 shadow-sm dark:shadow-md flex flex-col justify-between">
+                <div class="flex justify-between items-center text-slate-500 dark:text-slate-300 font-semibold text-xs uppercase tracking-wider">
+                    <span>COMUNICACIÓN</span><i class="fa-solid fa-wifi text-blue-500 dark:text-blue-400 text-sm"></i>
+                </div>
+                <div class="my-2 flex items-baseline gap-1">
+                    <span id="kpiComCount" class="text-3xl font-extrabold text-slate-900 dark:text-white">0</span>
+                    <span class="text-xs text-slate-400" id="kpiComTotal">/ 0</span>
+                </div>
+                <div class="text-[11px] font-medium text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/60 px-2 py-0.5 rounded w-fit" id="kpiComSub">0 sin com.</div>
+            </div>
+
+            <div class="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-slate-200 dark:border-slate-700/70 shadow-sm dark:shadow-md flex flex-col justify-between">
+                <div class="flex justify-between items-center text-slate-500 dark:text-slate-300 font-semibold text-xs uppercase tracking-wider">
+                    <span>GENERAL (PROT)</span><i class="fa-solid fa-shield-halved text-purple-600 dark:text-purple-400 text-sm"></i>
+                </div>
+                <div class="my-2 flex items-baseline gap-1">
+                    <span id="kpiProtCount" class="text-3xl font-extrabold text-slate-900 dark:text-white">0</span>
+                    <span class="text-xs text-slate-400" id="kpiProtTotal">/ 0</span>
+                </div>
+                <div class="text-[11px] font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 px-2 py-0.5 rounded w-fit" id="kpiProtSub">0 inactivos/s.i.</div>
+            </div>
+
+            <div class="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-slate-200 dark:border-slate-700/70 shadow-sm dark:shadow-md flex flex-col justify-between">
+                <div class="flex justify-between items-center text-slate-500 dark:text-slate-300 font-semibold text-xs uppercase tracking-wider">
+                    <span>RECONEXIÓN (AR)</span><i class="fa-solid fa-rotate-right text-emerald-600 dark:text-emerald-400 text-sm"></i>
+                </div>
+                <div class="my-2 flex items-baseline gap-1">
+                    <span id="kpiArCount" class="text-3xl font-extrabold text-slate-900 dark:text-white">0</span>
+                    <span class="text-xs text-slate-400" id="kpiArTotal">/ 0</span>
+                </div>
+                <div class="text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 px-2 py-0.5 rounded w-fit" id="kpiArSub">0 deshab./s.i.</div>
+            </div>
+
+            <div class="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-slate-200 dark:border-slate-700/70 shadow-sm dark:shadow-md flex flex-col justify-between">
+                <div class="flex justify-between items-center text-slate-500 dark:text-slate-300 font-semibold text-xs uppercase tracking-wider">
+                    <span>SENSITIVA (SEF)</span><i class="fa-solid fa-bolt text-yellow-500 dark:text-yellow-400 text-sm"></i>
+                </div>
+                <div class="my-2 flex items-baseline gap-1">
+                    <span id="kpiSefCount" class="text-3xl font-extrabold text-slate-900 dark:text-white">0</span>
+                    <span class="text-xs text-slate-400" id="kpiSefTotal">/ 0</span>
+                </div>
+                <div class="text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 px-2 py-0.5 rounded w-fit" id="kpiSefSub">0 deshab./s.i.</div>
+            </div>
+
+            <div class="bg-white dark:bg-[#1e293b] p-4 rounded-xl border border-slate-200 dark:border-slate-700/70 shadow-sm dark:shadow-md flex flex-col justify-between">
+                <div class="flex justify-between items-center text-slate-500 dark:text-slate-300 font-semibold text-xs uppercase tracking-wider">
+                    <span>RESIDUAL (EF)</span><i class="fa-solid fa-triangle-exclamation text-rose-500 dark:text-rose-400 text-sm"></i>
+                </div>
+                <div class="my-2 flex items-baseline gap-1">
+                    <span id="kpiEfCount" class="text-3xl font-extrabold text-slate-900 dark:text-white">0</span>
+                    <span class="text-xs text-slate-400" id="kpiEfTotal">/ 0</span>
+                </div>
+                <div class="text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 px-2 py-0.5 rounded w-fit" id="kpiEfSub">0 deshab./s.i.</div>
+            </div>
+        </section>
+
+        <!-- 2. Grid de Gráficos y Tablas Detalladas -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- Comunicación -->
+            <div class="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700/70 p-5 shadow-md flex flex-col justify-between">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                    <div class="md:col-span-5 flex flex-col items-center">
+                        <h3 class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide mb-2">COMUNICACIÓN PUCÓN</h3>
+                        <div class="w-36 h-36 relative"><canvas id="chartCom"></canvas></div>
+                    </div>
+                    <div class="md:col-span-7">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-semibold text-rose-600 dark:text-rose-400 flex items-center gap-1">
+                                <i class="fa-solid fa-triangle-exclamation"></i> Equipos Sin Comunicación
+                            </span>
+                            <span id="countNoCom" class="text-[10px] bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 px-2 py-0.5 rounded-full border border-rose-300 dark:border-rose-800">0 equipos</span>
+                        </div>
+                        <div class="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700/80 rounded-lg">
+                            <table class="w-full text-left text-[11px]">
+                                <thead class="bg-slate-100 dark:bg-[#0f172a] text-slate-600 dark:text-slate-400 sticky top-0">
+                                    <tr>
+                                        <th class="p-2 w-8 text-center"><input type="checkbox" onchange="toggleSelectAll('tableNoCom', this)" class="rounded border-slate-300 dark:border-slate-600 text-blue-600"></th>
+                                        <th class="p-2">Identificador</th>
+                                        <th class="p-2">Nombre</th>
+                                        <th class="p-2">Estado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tableNoCom" class="divide-y divide-slate-200 dark:divide-slate-700/60 text-slate-700 dark:text-slate-300"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- General (Prot) -->
+            <div class="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700/70 p-5 shadow-md flex flex-col justify-between">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                    <div class="md:col-span-5 flex flex-col items-center">
+                        <h3 class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide mb-2">GENERAL (PROT) PUCÓN</h3>
+                        <div class="w-36 h-36 relative"><canvas id="chartProt"></canvas></div>
+                    </div>
+                    <div class="md:col-span-7">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                <i class="fa-solid fa-triangle-exclamation"></i> Equipos Sin General (Prot)
+                            </span>
+                            <span id="countNoProt" class="text-[10px] bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-full border border-amber-300 dark:border-amber-800">0 equipos</span>
+                        </div>
+                        <div class="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700/80 rounded-lg">
+                            <table class="w-full text-left text-[11px]">
+                                <thead class="bg-slate-100 dark:bg-[#0f172a] text-slate-600 dark:text-slate-400 sticky top-0">
+                                    <tr>
+                                        <th class="p-2 w-8 text-center"><input type="checkbox" onchange="toggleSelectAll('tableNoProt', this)" class="rounded border-slate-300 dark:border-slate-600 text-blue-600"></th>
+                                        <th class="p-2">Identificador</th>
+                                        <th class="p-2">Nombre</th>
+                                        <th class="p-2">Estado Prot</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tableNoProt" class="divide-y divide-slate-200 dark:divide-slate-700/60 text-slate-700 dark:text-slate-300"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reconexión (AR) -->
+            <div class="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700/70 p-5 shadow-md flex flex-col justify-between">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                    <div class="md:col-span-5 flex flex-col items-center">
+                        <h3 class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide mb-2">RECONEXIÓN (AR) PUCÓN</h3>
+                        <div class="w-36 h-36 relative"><canvas id="chartAr"></canvas></div>
+                    </div>
+                    <div class="md:col-span-7">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                <i class="fa-solid fa-triangle-exclamation text-amber-500"></i> Equipos Sin Reconexión (AR)
+                            </span>
+                            <span id="countNoAr" class="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full border border-slate-300 dark:border-slate-700">0 equipos</span>
+                        </div>
+                        <div class="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700/80 rounded-lg">
+                            <table class="w-full text-left text-[11px]">
+                                <thead class="bg-slate-100 dark:bg-[#0f172a] text-slate-600 dark:text-slate-400 sticky top-0">
+                                    <tr>
+                                        <th class="p-2 w-8 text-center"><input type="checkbox" onchange="toggleSelectAll('tableNoAr', this)" class="rounded border-slate-300 dark:border-slate-600 text-blue-600"></th>
+                                        <th class="p-2">Identificador</th>
+                                        <th class="p-2">Nombre</th>
+                                        <th class="p-2">Estado AR</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tableNoAr" class="divide-y divide-slate-200 dark:divide-slate-700/60 text-slate-700 dark:text-slate-300"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sensitiva (SEF) -->
+            <div class="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700/70 p-5 shadow-md flex flex-col justify-between">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                    <div class="md:col-span-5 flex flex-col items-center">
+                        <h3 class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide mb-2">SENSITIVA (SEF) PUCÓN</h3>
+                        <div class="w-36 h-36 relative"><canvas id="chartSef"></canvas></div>
+                    </div>
+                    <div class="md:col-span-7">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                <i class="fa-solid fa-triangle-exclamation text-amber-500"></i> Equipos Sin Sensitiva (SEF)
+                            </span>
+                            <span id="countNoSef" class="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full border border-slate-300 dark:border-slate-700">0 equipos</span>
+                        </div>
+                        <div class="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700/80 rounded-lg">
+                            <table class="w-full text-left text-[11px]">
+                                <thead class="bg-slate-100 dark:bg-[#0f172a] text-slate-600 dark:text-slate-400 sticky top-0">
+                                    <tr>
+                                        <th class="p-2 w-8 text-center"><input type="checkbox" onchange="toggleSelectAll('tableNoSef', this)" class="rounded border-slate-300 dark:border-slate-600 text-blue-600"></th>
+                                        <th class="p-2">Identificador</th>
+                                        <th class="p-2">Nombre</th>
+                                        <th class="p-2">Estado SEF</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tableNoSef" class="divide-y divide-slate-200 dark:divide-slate-700/60 text-slate-700 dark:text-slate-300"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Residual (EF) -->
+            <div class="bg-white dark:bg-[#1e293b] rounded-xl border border-slate-200 dark:border-slate-700/70 p-5 shadow-md flex flex-col justify-between lg:col-span-2">
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                    <div class="md:col-span-4 flex flex-col items-center">
+                        <h3 class="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide mb-2">RESIDUAL (EF) PUCÓN</h3>
+                        <div class="w-36 h-36 relative"><canvas id="chartEf"></canvas></div>
+                    </div>
+                    <div class="md:col-span-8">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                <i class="fa-solid fa-triangle-exclamation text-amber-500"></i> Equipos Sin Residual (EF)
+                            </span>
+                            <span id="countNoEf" class="text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-full border border-slate-300 dark:border-slate-700">0 equipos</span>
+                        </div>
+                        <div class="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700/80 rounded-lg">
+                            <table class="w-full text-left text-[11px]">
+                                <thead class="bg-slate-100 dark:bg-[#0f172a] text-slate-600 dark:text-slate-400 sticky top-0">
+                                    <tr>
+                                        <th class="p-2 w-8 text-center"><input type="checkbox" onchange="toggleSelectAll('tableNoEf', this)" class="rounded border-slate-300 dark:border-slate-600 text-blue-600"></th>
+                                        <th class="p-2">Identificador</th>
+                                        <th class="p-2">Nombre</th>
+                                        <th class="p-2">Estado EF</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tableNoEf" class="divide-y divide-slate-200 dark:divide-slate-700/60 text-slate-700 dark:text-slate-300"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- Editor de registros -->
+    <div id="editorModal" class="fixed inset-0 z-[60] hidden bg-black/70 p-3 overflow-y-auto" role="dialog" aria-modal="true" aria-label="Editar equipo">
+      <div class="bg-white dark:bg-[#1e293b] rounded-xl max-w-xl mx-auto my-5 p-5 shadow-xl">
+        <div class="flex justify-between items-center mb-4"><h2 id="editorTitle" class="font-bold text-lg">Editar equipo</h2><button onclick="closeEditor()" aria-label="Cerrar">✕</button></div>
+        <form id="editorForm" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></form>
+        <div class="flex flex-wrap gap-2 justify-end mt-5"><button onclick="deleteEquipment()" id="deleteEquipmentBtn" class="bg-rose-700 text-white px-4 py-2 rounded-lg">Eliminar</button><button onclick="closeEditor()" class="bg-slate-500 text-white px-4 py-2 rounded-lg">Cancelar</button><button type="submit" form="editorForm" class="bg-blue-600 text-white px-4 py-2 rounded-lg">Guardar cambios</button></div>
+      </div>
+    </div>
+    <!-- Modal Georreferenciación / Mapa MapLibre con OpenFreeMap -->
+    <div id="mapModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 hidden backdrop-blur-sm">
+        <div class="bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700 rounded-2xl shadow-2xl w-11/12 max-w-2xl p-6 space-y-4">
+            <div class="flex justify-between items-center border-b border-slate-200 dark:border-slate-700 pb-3">
+                <div>
+                    <h3 id="modalEquipmentTitle" class="text-base font-bold text-slate-900 dark:text-white">Ubicación del Equipo</h3>
+                    <p id="modalCoordsText" class="text-xs font-mono text-blue-600 dark:text-blue-400">Coordenadas: -</p>
+                </div>
+                <button onclick="closeMapModal()" class="text-slate-400 hover:text-slate-700 dark:hover:text-white p-1.5 text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <!-- Contenedor del Mapa MapLibre -->
+            <div id="mapContainer" class="w-full h-80 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner z-10 relative"></div>
+
+            <div class="flex justify-between items-center pt-2">
+                <button onclick="copyGoogleMapsLink()" class="bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2">
+                    <i class="fa-solid fa-map text-red-500"></i> Copiar Link Google Maps
+                </button>
+                <button onclick="closeMapModal()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-lg text-xs font-semibold transition shadow">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botón Flotante de Descarga -->
+    <div class="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-40">
+        <button onclick="downloadSelectedExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-3 rounded-full shadow-2xl flex items-center gap-2 border border-emerald-400/50 transition transform hover:scale-105">
+            <i class="fa-solid fa-download text-lg"></i>
+            <span class="text-xs">Descargar Seleccionados (<span id="floatingBadgeCount">0</span>)</span>
+        </button>
+    </div>
+
+    <!-- Script de Lógica -->
+    <script>
+        let charts = {};
+        let masterRawData = [];
+        let currentPuconData = [];
+        let selectedIds = new Set();
+        let maplibreMap = null;
+        let maplibreMarker = null;
+
+        function initCharts() {
+            const chartConfig = (label1, label2, color1, color2) => ({
+                type: 'doughnut',
+                data: {
+                    labels: [label1, label2],
+                    datasets: [{ data: [0, 0], backgroundColor: [color1, color2], borderWidth: 0 }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { color: document.documentElement.classList.contains('dark') ? '#94a3b8' : '#475569', font: { size: 10 } } } }
+                }
+            });
+
+            charts.com = new Chart(document.getElementById('chartCom'), chartConfig('Comunicado', 'Falla Com.', '#3b82f6', '#f43f5e'));
+            charts.prot = new Chart(document.getElementById('chartProt'), chartConfig('Habilitado', 'Inactivo / S.I.', '#a855f7', '#f59e0b'));
+            charts.ar = new Chart(document.getElementById('chartAr'), chartConfig('Habilitado', 'Deshabilitado / S.I.', '#10b981', '#64748b'));
+            charts.sef = new Chart(document.getElementById('chartSef'), chartConfig('Habilitado', 'Deshabilitado / S.I.', '#eab308', '#64748b'));
+            charts.ef = new Chart(document.getElementById('chartEf'), chartConfig('Habilitado', 'Deshabilitado / S.I.', '#fb7185', '#64748b'));
+        }
+
+        const STORAGE_KEY = 'monitoreo_pucon_equipos_v2';
+        const EDIT_FIELDS = ['Identificador','Nombre','Comuna','Estado','Estado de Comunicacion','General (Prot)','Reconexion (AR)','Sensitiva (SEF)','Residual (EF)','Coordenadas'];
+        let editingIndex = -1;
+        function saveLocalData() {
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(masterRawData)); }
+            catch(e) { alert('No se pudo guardar en este navegador. Exporte un respaldo Excel.'); }
+        }
+        function openEditor(index = -1) {
+            editingIndex = index;
+            const record = index >= 0 ? masterRawData[index] : {Comuna:'Pucón'};
+            document.getElementById('editorTitle').textContent = index >= 0 ? 'Editar equipo' : 'Nuevo equipo';
+            document.getElementById('deleteEquipmentBtn').style.display = index >= 0 ? '' : 'none';
+            const form = document.getElementById('editorForm'); form.replaceChildren();
+            EDIT_FIELDS.forEach(field => {
+                const wrap = document.createElement('label'); wrap.className = 'flex flex-col gap-1 text-xs font-semibold';
+                const label = document.createElement('span'); label.textContent = field;
+                const input = document.createElement('input'); input.name = field; input.value = String(record[field] ?? '');
+                input.required = field === 'Identificador';
+                input.className = 'w-full rounded-lg p-2 border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white';
+                wrap.append(label,input); form.appendChild(wrap);
+            });
+            document.getElementById('editorModal').classList.remove('hidden');
+        }
+        function closeEditor() { document.getElementById('editorModal').classList.add('hidden'); }
+        document.getElementById('editorForm').addEventListener('submit', e => {
+            e.preventDefault(); const values = Object.fromEntries(new FormData(e.currentTarget).entries());
+            const id = values.Identificador.trim();
+            if(masterRawData.some((r,i) => i !== editingIndex && String(r.Identificador ?? r.id ?? '').trim() === id)) { alert('Ya existe un equipo con ese identificador.'); return; }
+            if(editingIndex >= 0) masterRawData[editingIndex] = {...masterRawData[editingIndex], ...values};
+            else masterRawData.push(values);
+            saveLocalData(); selectedIds.clear(); filterData(); closeEditor();
+        });
+        function deleteEquipment() {
+            if(editingIndex < 0 || !confirm('¿Eliminar este equipo del registro local?')) return;
+            masterRawData.splice(editingIndex,1); saveLocalData(); selectedIds.clear(); filterData(); closeEditor();
+        }
+        function processData(rawData) {
+            masterRawData = rawData;
+            saveLocalData();
+            filterData();
+        }
+
+        function filterData() {
+            const query = document.getElementById('globalSearch').value.toLowerCase().trim();
+
+            const puconFiltered = masterRawData.filter(item => {
+                const comuna = String(item.Comuna || item.comuna || "").trim().toLowerCase();
+                return comuna.includes("pucon") || comuna.includes("pucón");
+            });
+
+            currentPuconData = puconFiltered;
+            const totalPucon = currentPuconData.length;
+
+            const displayData = query === "" ? currentPuconData : currentPuconData.filter(item => {
+                const id = String(item.Identificador || item.id || "").toLowerCase();
+                const nombre = String(item.Nombre || item.nombre || "").toLowerCase();
+                return id.includes(query) || nombre.includes(query);
+            });
+
+            document.getElementById('totalPuconCount').innerText = totalPucon;
+
+            let comOk = 0, comNo = 0, protOk = 0, protNo = 0, arOk = 0, arNo = 0, sefOk = 0, sefNo = 0, efOk = 0, efNo = 0;
+            let listNoCom = [], listNoProt = [], listNoAr = [], listNoSef = [], listNoEf = [];
+
+            currentPuconData.forEach(item => {
+                const id = item.Identificador || item.id || "S/I";
+                const nombre = item.Nombre || item.nombre || "Sin Nombre";
+
+                const com = String(item['Estado de Comunicacion'] || item.comunicacion || "").trim();
+                const prot = String(item['General (Prot)'] || item.prot || "").trim();
+                const ar = String(item['Reconexion (AR)'] || item.ar || "").trim();
+                const sef = String(item['Sensitiva (SEF)'] || item.sef || "").trim();
+                const ef = String(item['Residual (EF)'] || item.ef || "").trim();
+
+                if (com === 'Comunicado') comOk++; else { comNo++; listNoCom.push({ id, nombre, estado: com }); }
+                if (prot === 'Habilitado') protOk++; else { protNo++; listNoProt.push({ id, nombre, estado: prot }); }
+                if (ar === 'Habilitado') arOk++; else { arNo++; listNoAr.push({ id, nombre, estado: ar }); }
+                if (sef === 'Habilitado') sefOk++; else { sefNo++; listNoSef.push({ id, nombre, estado: sef }); }
+                if (ef === 'Habilitado') efOk++; else { efNo++; listNoEf.push({ id, nombre, estado: ef }); }
+            });
+
+            document.getElementById('kpiComCount').innerText = masterRawData.length > 0 ? comOk : 0;
+            document.getElementById('kpiComTotal').innerText = `/ ${totalPucon}`;
+            document.getElementById('kpiComSub').innerText = `${comNo} sin com.`;
+
+            document.getElementById('kpiProtCount').innerText = masterRawData.length > 0 ? protOk : 0;
+            document.getElementById('kpiProtTotal').innerText = `/ ${totalPucon}`;
+            document.getElementById('kpiProtSub').innerText = `${protNo} inactivos/s.i.`;
+
+            document.getElementById('kpiArCount').innerText = masterRawData.length > 0 ? arOk : 0;
+            document.getElementById('kpiArTotal').innerText = `/ ${totalPucon}`;
+            document.getElementById('kpiArSub').innerText = `${arNo} deshab./s.i.`;
+
+            document.getElementById('kpiSefCount').innerText = masterRawData.length > 0 ? sefOk : 0;
+            document.getElementById('kpiSefTotal').innerText = `/ ${totalPucon}`;
+            document.getElementById('kpiSefSub').innerText = `${sefNo} deshab./s.i.`;
+
+            document.getElementById('kpiEfCount').innerText = masterRawData.length > 0 ? efOk : 0;
+            document.getElementById('kpiEfTotal').innerText = `/ ${totalPucon}`;
+            document.getElementById('kpiEfSub').innerText = `${efNo} deshab./s.i.`;
+
+            updateChart(charts.com, comOk, comNo);
+            updateChart(charts.prot, protOk, protNo);
+            updateChart(charts.ar, arOk, arNo);
+            updateChart(charts.sef, sefOk, sefNo);
+            updateChart(charts.ef, efOk, efNo);
+
+            renderTable('tableNoCom', 'countNoCom', listNoCom);
+            renderTable('tableNoProt', 'countNoProt', listNoProt);
+            renderTable('tableNoAr', 'countNoAr', listNoAr);
+            renderTable('tableNoSef', 'countNoSef', listNoSef);
+            renderTable('tableNoEf', 'countNoEf', listNoEf);
+
+            renderSearchResults(displayData, query);
+            updateExportBadge();
+        }
+
+        function renderSearchResults(results, query) {
+            const section = document.getElementById('searchResultsSection');
+            const container = document.getElementById('searchCardsContainer');
+            const countBadge = document.getElementById('searchResultCount');
+
+            if (query === "" || masterRawData.length === 0) {
+                section.classList.add('hidden');
+                container.innerHTML = '';
+                return;
+            }
+
+            section.classList.remove('hidden');
+            countBadge.innerText = `${results.length} encontrados`;
+            container.innerHTML = '';
+
+            if (results.length === 0) {
+                container.innerHTML = `<div class="col-span-full p-4 text-center text-slate-400 text-xs">No se encontraron equipos que coincidan con la búsqueda.</div>`;
+                return;
+            }
+
+            results.forEach(item => {
+                const recordIndex = masterRawData.indexOf(item);
+                const id = item.Identificador || item.id || "S/I";
+                const nombre = item.Nombre || item.nombre || "Sin Nombre";
+                const estado = item.Estado || item.estado || "S/I";
+                const prot = item['General (Prot)'] || item.prot || "S/I";
+                const sef = item['Sensitiva (SEF)'] || item.sef || "S/I";
+                const ef = item['Residual (EF)'] || item.ef || "S/I";
+                const ar = item['Reconexion (AR)'] || item.ar || "S/I";
+                const coords = item.Coordenadas || item.coordenadas || "";
+
+                const card = document.createElement('div');
+                card.className = "bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700/80 rounded-xl overflow-hidden shadow text-xs flex flex-col justify-between";
+                
+                card.innerHTML = `
+                    <table class="w-full text-left">
+                        <tbody class="divide-y divide-slate-200 dark:divide-slate-700/70">
+                            <tr class="bg-blue-600/10 dark:bg-blue-900/30">
+                                <th class="p-2.5 font-bold text-blue-700 dark:text-blue-300 w-1/3">Nombre</th>
+                                <td class="p-2.5 font-semibold text-slate-800 dark:text-slate-100">${nombre}</td>
+                            </tr>
+                            <tr>
+                                <th class="p-2.5 font-medium text-slate-600 dark:text-slate-400">Identificador</th>
+                                <td class="p-2.5 font-mono font-bold text-blue-600 dark:text-blue-400">${id}</td>
+                            </tr>
+                            <tr>
+                                <th class="p-2.5 font-medium text-slate-600 dark:text-slate-400">Estado</th>
+                                <td class="p-2.5 text-slate-700 dark:text-slate-300">${estado}</td>
+                            </tr>
+                            <tr>
+                                <th class="p-2.5 font-medium text-slate-600 dark:text-slate-400">General (Prot)</th>
+                                <td class="p-2.5 text-slate-700 dark:text-slate-300">${prot}</td>
+                            </tr>
+                            <tr>
+                                <th class="p-2.5 font-medium text-slate-600 dark:text-slate-400">Sensitiva (SEF)</th>
+                                <td class="p-2.5 text-slate-700 dark:text-slate-300">${sef}</td>
+                            </tr>
+                            <tr>
+                                <th class="p-2.5 font-medium text-slate-600 dark:text-slate-400">Residual (EF)</th>
+                                <td class="p-2.5 text-slate-700 dark:text-slate-300">${ef}</td>
+                            </tr>
+                            <tr>
+                                <th class="p-2.5 font-medium text-slate-600 dark:text-slate-400">Reconexión (AR)</th>
+                                <td class="p-2.5 text-slate-700 dark:text-slate-300">${ar}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div class="p-3 bg-slate-100 dark:bg-[#162032] border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                        <span class="font-mono text-[10px] text-slate-500 dark:text-slate-400"><i class="fa-solid fa-location-dot text-rose-500"></i> ${coords}</span>
+                        <button onclick='openMapModal("${id}", "${nombre.replace(/'/g, "\\'")}", "${coords}")' class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center gap-1.5 shadow">
+                            <i class="fa-solid fa-map-location-dot"></i> Revisar ubicación
+                        </button>
+                    </div>
+                `;
+                const editButton = document.createElement('button');
+                editButton.textContent = '✎ Editar registro';
+                editButton.className = 'm-3 bg-indigo-600 text-white px-3 py-2 rounded-lg text-xs font-semibold';
+                editButton.addEventListener('click', () => openEditor(recordIndex));
+                card.appendChild(editButton);
+                container.appendChild(card);
+            });
+        }
+
+        function updateChart(chart, val1, val2) {
+            chart.data.datasets[0].data = [val1, val2];
+            chart.options.plugins.legend.labels.color = document.documentElement.classList.contains('dark') ? '#94a3b8' : '#475569';
+            chart.update();
+        }
+
+        function renderTable(tbodyId, countId, items) {
+            const tbody = document.getElementById(tbodyId);
+            document.getElementById(countId).innerText = `${items.length} equipos`;
+            tbody.innerHTML = '';
+
+            if (items.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-3 text-center text-slate-400">No hay equipos en esta condición</td></tr>`;
+                return;
+            }
+
+            items.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-100 dark:hover:bg-slate-800/50 transition";
+                const isChecked = selectedIds.has(item.id) ? 'checked' : '';
+                tr.innerHTML = `
+                    <td class="p-2 text-center">
+                        <input type="checkbox" value="${item.id}" onchange="toggleItemSelect('${item.id}', this.checked)" ${isChecked} class="item-checkbox rounded border-slate-300 dark:border-slate-600 text-blue-600">
+                    </td>
+                    <td class="p-2 font-mono text-blue-600 dark:text-blue-400 font-semibold">${item.id}</td>
+                    <td class="p-2 text-slate-700 dark:text-slate-200 truncate max-w-[180px]" title="${item.nombre}">${item.nombre}</td>
+                    <td class="p-2 text-slate-500 dark:text-slate-400">${item.estado}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function toggleItemSelect(id, checked) {
+            if (checked) {
+                selectedIds.add(id);
+            } else {
+                selectedIds.delete(id);
+            }
+            updateExportBadge();
+            syncCheckboxes();
+        }
+
+        function toggleSelectAll(tbodyId, masterCheckbox) {
+            const tbody = document.getElementById(tbodyId);
+            const checkboxes = tbody.querySelectorAll('.item-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = masterCheckbox.checked;
+                if (masterCheckbox.checked) {
+                    selectedIds.add(cb.value);
+                } else {
+                    selectedIds.delete(cb.value);
+                }
+            });
+            updateExportBadge();
+            syncCheckboxes();
+        }
+
+        function syncCheckboxes() {
+            document.querySelectorAll('.item-checkbox').forEach(cb => {
+                cb.checked = selectedIds.has(cb.value);
+            });
+        }
+
+        function updateExportBadge() {
+            const count = selectedIds.size;
+            document.getElementById('exportBadgeCount').innerText = count;
+            document.getElementById('floatingBadgeCount').innerText = count;
+        }
+
+        function downloadSelectedExcel() {
+            if (selectedIds.size === 0) {
+                alert("Por favor selecciona al menos un equipo en las tablas para exportar.");
+                return;
+            }
+
+            const filteredRecords = currentPuconData.filter(item => selectedIds.has(String(item.Identificador || item.id)));
+
+            if (filteredRecords.length === 0) {
+                alert("No se encontraron registros correspondientes a la selección.");
+                return;
+            }
+
+            const worksheet = XLSX.utils.json_to_sheet(filteredRecords);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Pucón Seleccionados");
+            XLSX.writeFile(workbook, `Reporte_Pucón_Seleccionados_${filteredRecords.length}_equipos.xlsx`);
+        }
+
+        // Funciones del Modal con MapLibre y OpenFreeMap
+        let currentModalCoords = "";
+
+        function openMapModal(id, name, coordsStr) {
+            currentModalCoords = coordsStr;
+            document.getElementById('modalEquipmentTitle').innerText = `${id} - ${name}`;
+            document.getElementById('modalCoordsText').innerText = `Coordenadas: ${coordsStr}`;
+            document.getElementById('mapModal').classList.remove('hidden');
+
+            let lat = -39.282;
+            let lon = -71.975;
+            if (coordsStr && coordsStr.trim() !== "") {
+                const parts = coordsStr.trim().split(/[\s,]+/);
+                if (parts.length >= 2) {
+                    const parsedLat = parseFloat(parts[0]);
+                    const parsedLon = parseFloat(parts[1]);
+                    if (!isNaN(parsedLat) && !isNaN(parsedLon)) {
+                        lat = parsedLat;
+                        lon = parsedLon;
+                    }
+                }
+            }
+
+            setTimeout(() => {
+                if (!maplibreMap) {
+                    maplibreMap = new maplibregl.Map({
+                        container: 'mapContainer',
+                        style: 'https://tiles.openfreemap.org/styles/liberty',
+                        center: [lon, lat],
+                        zoom: 14
+                    });
+                    maplibreMap.addControl(new maplibregl.NavigationControl(), 'top-right');
+                } else {
+                    maplibreMap.resize();
+                    maplibreMap.setCenter([lon, lat]);
+                    maplibreMap.setZoom(14);
+                }
+
+                if (maplibreMarker) {
+                    maplibreMarker.remove();
+                }
+
+                const popup = new maplibregl.Popup({ offset: 25 }).setHTML(
+                    `<b>${id}</b><br>${name}<br>Coordenadas: ${coordsStr}`
+                );
+
+                maplibreMarker = new maplibregl.Marker({ color: '#3b82f6' })
+                    .setLngLat([lon, lat])
+                    .setPopup(popup)
+                    .addTo(maplibreMap);
+
+                popup.addTo(maplibreMap);
+            }, 200);
+        }
+
+        function closeMapModal() {
+            document.getElementById('mapModal').classList.add('hidden');
+        }
+
+        function copyGoogleMapsLink() {
+            if (!currentModalCoords || currentModalCoords.trim() === "") {
+                alert("No hay coordenadas disponibles para este equipo.");
+                return;
+            }
+            const parts = currentModalCoords.trim().split(/[\s,]+/);
+            if (parts.length >= 2) {
+                const lat = parts[0];
+                const lon = parts[1];
+                const mapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+                
+                navigator.clipboard.writeText(mapsUrl).then(() => {
+                    alert("¡Link de Google Maps copiado al portapapeles!");
+                }).catch(err => {
+                    console.error('Error al copiar: ', err);
+                });
+            } else {
+                alert("Formato de coordenadas no válido.");
+            }
+        }
+
+        function toggleTheme() {
+            const html = document.documentElement;
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+            Object.values(charts).forEach(chart => {
+                chart.options.plugins.legend.labels.color = html.classList.contains('dark') ? '#94a3b8' : '#475569';
+                chart.update();
+            });
+        }
+
+        // Carga de archivo Excel externo
+        document.getElementById('excelFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('fileName').innerText = file.name;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const json = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName]);
+                    selectedIds.clear();
+                    processData(json);
+                } catch (err) {
+                    console.error(err);
+                    alert("Error al procesar el archivo Excel. Asegúrese de que sea un archivo válido.");
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('theme') === 'light') {
+                document.documentElement.classList.remove('dark');
+            }
+            initCharts();
+            try { const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); if(Array.isArray(stored) && stored.length) { masterRawData = stored; filterData(); document.getElementById('fileName').textContent = 'Datos guardados'; } }
+            catch(e) { console.warn('Datos locales no disponibles', e); }
+        });
+    </script>
+</body>
+</html>
